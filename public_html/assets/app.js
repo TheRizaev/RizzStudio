@@ -3,12 +3,27 @@
  * Vanilla JS (no React / build step). Fetches /api/catalog, renders the page,
  * wires the audio engine to the player UI. Mobile and desktop share the same
  * markup; CSS handles the layout switch via media queries.
+ *
+ * Player model:
+ *   - Inline #player-section is now a *passive* tracklist only — clicking a
+ *     row starts playback and opens the fullscreen overlay.
+ *   - The fullscreen overlay (#player-fs) holds the circular EQ, rotating
+ *     cover (vinyl-style), tracklist sidebar, transport controls, and the
+ *     progress bar. It auto-opens on play and closes via the ✕ button.
  */
 
 import { audioEngine } from './audio-engine.js';
+import { CircularEQ } from './circular-eq.js';
 import { rmark, formatTime, $, $$, e } from './ui-helpers.js';
 
 const ROOT = $('#root');
+
+// Module-level handles. Kept here so a hot re-render doesn't leak rAF loops.
+let circularEQ = null;
+// Cached release context for the overlay tracklist sidebar.
+let currentRelease = null;
+// All releases (used to look up titles for cross-release queues).
+let allReleases = [];
 
 /* ─── boot ─── */
 async function boot() {
@@ -24,10 +39,15 @@ async function boot() {
       <section id="vault-section" class="vault-section"></section>
       ${footerHTML()}
     </div>
+    ${fullscreenPlayerHTML()}
   `;
 
   // Footer glitch — runs continuously, started once after first render
   startFooterGlitch();
+
+  // Wire the fullscreen overlay (it's part of the initial DOM, so we can
+  // attach handlers right away — they'll just fire when state changes).
+  wireFullscreenPlayer();
 
   let catalog = { releases: [] };
   try {
@@ -38,6 +58,7 @@ async function boot() {
   }
 
   const releases = catalog.releases || [];
+  allReleases = releases;
   renderHeroStats(releases);
   if (!releases.length) {
     renderEmpty();
@@ -45,19 +66,18 @@ async function boot() {
   }
 
   const latest = releases[0];
-  const allTracks = releases.flatMap(r => (r.tracks || []).map(t => ({
-    ...t,
-    release_title: r.title,
-    release_id: r.id,
-    cover_url: r.cover_url,
-  })));
+  currentRelease = latest;
 
-  audioEngine.setQueue(latest.tracks || allTracks);
+  audioEngine.setQueue(latest.tracks || []);
 
-  renderPlayer();
+  renderPlayerTracklist(latest);
   renderLatest(latest);
   renderVault(releases);
   wireNavLinks();
+
+  // Subscribe a single global listener that keeps both the inline tracklist
+  // and the fullscreen overlay in sync with engine state.
+  audioEngine.subscribe(syncAllUI);
 }
 
 function renderEmpty() {
@@ -71,10 +91,7 @@ function renderEmpty() {
   `;
 }
 
-/* Live numbers in the hero strip — replaces the old hardcoded 47 / ∞ / 0%.
- * Counts are derived from the public catalog: total track count, sum of
- * play counts across all tracks, and total runtime formatted as H:MM (or
- * just M:SS for short catalogs under an hour). */
+/* ─── live hero stats ─── */
 function renderHeroStats(releases) {
   const tracksEl = $('#hs-tracks');
   const playsEl = $('#hs-plays');
@@ -97,8 +114,6 @@ function renderHeroStats(releases) {
   durEl.textContent = formatHeroDuration(durationSec);
 }
 
-// Format seconds as either H:MM (catalog ≥ 1 hour) or M:SS — keeps the
-// number short enough to read at hero-size font.
 function formatHeroDuration(sec) {
   const total = Math.floor(sec || 0);
   if (total < 3600) {
@@ -129,7 +144,7 @@ function navHTML() {
   `;
 }
 
-/* ─── hero — restored from v1-full.jsx mockup with vinyl + stats row ─── */
+/* ─── hero (vinyl restored as it was originally) ─── */
 function heroHTML() {
   // 60 stars equally spaced on the outer ring
   const stars = Array.from({ length: 60 }, (_, i) => {
@@ -212,7 +227,7 @@ function marqueeHTML() {
   `;
 }
 
-/* ─── footer with FooterHero RGB-glitch wordmark (ported from v1-full.jsx) ─── */
+/* ─── footer ─── */
 function footerHTML() {
   return `
     <footer class="footer pad-x">
@@ -237,10 +252,6 @@ function footerHTML() {
   `;
 }
 
-// 1:1 port of FooterHero's `wordmark()` from v1-full.jsx —
-// 'the' italic + 'RIZAEV' + white period at the end.
-// Note: the period is white only on the BASE layer; on the rgb-shifted
-// layers it inherits the layer color so the chromatic aberration is uniform.
 function footerWordmark(color, isBase) {
   const dotColor = isBase ? '#fff' : color;
   return `
@@ -250,8 +261,6 @@ function footerWordmark(color, isBase) {
   `;
 }
 
-// rAF-driven sub-pixel jitter on the three layers. Constants ported
-// directly from FooterHero in v1-full.jsx so the feel matches your design.
 function startFooterGlitch() {
   const base = $('#fh-base');
   const r1 = $('#fh-magenta');
@@ -283,108 +292,225 @@ function wireNavLinks() {
   });
   $('[data-action="play-latest"]').addEventListener('click', () => {
     audioEngine.playIndex(0, true);
-    $('#player-section').scrollIntoView({ behavior: 'smooth' });
+    // syncAllUI -> openFullscreen will run on the next state tick.
   });
 }
 
-/* ─── player ─── */
-function renderPlayer() {
+/* ─── inline player section — tracklist only, no controls ─── */
+function renderPlayerTracklist(release) {
   const sec = $('#player-section');
   sec.innerHTML = `
     <div class="pad-x">
       <div class="player-head">
-        <span class="card-tag">// PLAYER</span>
+        <span class="card-tag">// PLAYER · ${escapeHTML(release.title.toUpperCase())}</span>
         <span class="mono player-counter" id="player-counter">— / —</span>
       </div>
-
-      <div class="now-playing">
-        <div class="np-left">
-          <div class="np-status">
-            <span class="live-dot" id="np-dot"></span>
-            <span id="np-status-text">PAUSED</span>
-          </div>
-          <div class="np-title" id="np-title">—</div>
-          <div class="np-meta mono" id="np-meta">—</div>
-        </div>
-        <div class="np-controls">
-          <button class="transport-btn" data-action="prev" aria-label="Previous">⏮</button>
-          <button class="play-btn" id="play-btn" aria-label="Play/pause">▶</button>
-          <button class="transport-btn" data-action="next" aria-label="Next">⏭</button>
-        </div>
+      <div class="player-hint mono">
+        <span class="acid">◉</span> CLICK ANY TRACK TO LAUNCH THE FULLSCREEN PLAYER
       </div>
-
-      <div class="waveform" id="waveform" role="slider" aria-label="Seek">
-        <div class="playhead" id="playhead"></div>
-      </div>
-
-      <div class="time-row mono">
-        <span class="acid" id="time-cur">0:00</span>
-        <span style="opacity:0.4">—</span>
-        <span style="opacity:0.4" id="time-total">0:00</span>
-      </div>
-
       <div class="tracklist" id="tracklist"></div>
     </div>
   `;
 
-  $('#play-btn').addEventListener('click', () => audioEngine.toggle());
-  $('[data-action="next"]').addEventListener('click', () => audioEngine.next());
-  $('[data-action="prev"]').addEventListener('click', () => audioEngine.prev());
+  const tl = $('#tracklist');
+  tl.innerHTML = (release.tracks || []).map((t, i) => `
+    <button class="track-row" data-idx="${i}">
+      <span class="track-num">${t.n || String(i + 1).padStart(2, '0')}</span>
+      <span class="eq-bars" style="display:none"><span></span><span></span><span></span><span></span></span>
+      <span class="track-body">
+        <span class="track-title">${escapeHTML(t.title)}</span>
+        <span class="track-meta mono">
+          ${t.bpm ? `${t.bpm} BPM · ` : ''}${formatTime(t.duration || 0)}
+        </span>
+      </span>
+      <span class="track-play">▶</span>
+    </button>
+  `).join('');
 
-  const wf = $('#waveform');
-  wf.addEventListener('click', ev => {
-    const rect = wf.getBoundingClientRect();
-    audioEngine.seek((ev.clientX - rect.left) / rect.width);
+  $$('#tracklist .track-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const i = +row.dataset.idx;
+      audioEngine.playIndex(i, true);
+      // openFullscreen() called by syncAllUI when playing flips to true.
+    });
   });
-
-  buildWaveformBars();
-  audioEngine.subscribe(state => updatePlayerUI(state));
 }
 
-const NUM_BARS = 96;
-function buildWaveformBars() {
-  const wf = $('#waveform');
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < NUM_BARS; i++) {
-    const b = document.createElement('div');
-    b.className = 'wave-bar';
-    b.style.height = '20%';
-    frag.appendChild(b);
-  }
-  wf.insertBefore(frag, $('#playhead'));
+/* ─── fullscreen player overlay ─── */
+function fullscreenPlayerHTML() {
+  return `
+    <div id="player-fs" class="player-fs" aria-hidden="true">
+      <!--
+        Layered structure:
+          .fs-bg          fixed black + ambient glow background
+          .fs-canvas-wrap absolutely positioned full-viewport, holds the EQ canvas
+          .fs-cover       centered rotating cover (vinyl)
+          .fs-sidebar     right-side track sidebar
+          .fs-topbar      top-left meta + close button top-right
+          .fs-bottombar   transport row + progress bar at the bottom
+        All layers use position:absolute inside the fixed-position root so we
+        avoid stacking-context surprises.
+      -->
+      <div class="fs-bg"></div>
+      <div class="fs-canvas-wrap">
+        <canvas id="fs-eq-canvas" class="fs-eq-canvas"></canvas>
+      </div>
+
+      <div class="fs-cover" id="fs-cover">
+        <!--
+          Inner img/fallback is rotated by CSS when playing. Outer wrapper holds
+          the optional thin acid border.
+        -->
+        <div class="fs-cover-disc" id="fs-cover-disc">
+          <img id="fs-cover-img" alt="" style="display:none">
+          <div class="fs-cover-fallback" id="fs-cover-fallback"></div>
+          <!-- center dot like on a vinyl record -->
+          <div class="fs-cover-spindle"></div>
+        </div>
+      </div>
+
+      <header class="fs-topbar">
+        <div class="fs-meta">
+          <div class="fs-meta-tag mono">
+            <span class="live-dot" id="fs-dot"></span>
+            <span id="fs-status">PAUSED</span>
+          </div>
+          <div class="fs-release mono" id="fs-release">—</div>
+        </div>
+        <button class="fs-close" id="fs-close" aria-label="Close player">
+          <span aria-hidden="true">✕</span>
+          <span class="fs-close-label mono">CLOSE</span>
+        </button>
+      </header>
+
+      <aside class="fs-sidebar" id="fs-sidebar">
+        <div class="fs-sidebar-head">
+          <div class="card-tag">// QUEUE</div>
+          <div class="fs-sidebar-title mono" id="fs-sidebar-title">—</div>
+        </div>
+        <div class="fs-sidebar-list" id="fs-sidebar-list"></div>
+      </aside>
+
+      <div class="fs-bottombar">
+        <div class="fs-now">
+          <div class="fs-now-title" id="fs-now-title">—</div>
+          <div class="fs-now-meta mono" id="fs-now-meta">—</div>
+        </div>
+
+        <div class="fs-controls">
+          <button class="fs-transport" data-action="prev" aria-label="Previous">⏮</button>
+          <button class="fs-play" id="fs-play" aria-label="Play/pause">▶</button>
+          <button class="fs-transport" data-action="next" aria-label="Next">⏭</button>
+        </div>
+
+        <div class="fs-time-wrap">
+          <span class="mono fs-time-cur" id="fs-time-cur">0:00</span>
+          <div class="fs-progress" id="fs-progress" role="slider" aria-label="Seek">
+            <div class="fs-progress-fill" id="fs-progress-fill"></div>
+            <div class="fs-progress-thumb" id="fs-progress-thumb"></div>
+          </div>
+          <span class="mono fs-time-total" id="fs-time-total">0:00</span>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function updatePlayerUI(state) {
-  const { track, playing, position, duration, peaks, liveLevels, queue, index } = state;
+function wireFullscreenPlayer() {
+  const fs = $('#player-fs');
 
-  $('#play-btn').textContent = playing ? '❚❚' : '▶';
-  $('#np-status-text').textContent = playing ? 'NOW PLAYING' : 'PAUSED';
-  $('#np-dot').style.animationPlayState = playing ? 'running' : 'paused';
-  $('#np-title').textContent = track?.title || '—';
-  $('#np-meta').textContent = track
-    ? `THE RIZAEV — ${track.release_title || ''}${track.bpm ? ` — ${track.bpm} BPM` : ''}`
-    : '—';
-  $('#player-counter').innerHTML = queue.length
-    ? `<span class="acid">${String(index + 1).padStart(2, '0')}</span><span style="opacity:0.4"> / ${String(queue.length).padStart(2, '0')}</span>`
-    : '— / —';
-
-  const total = duration || track?.duration || 0;
-  $('#time-cur').textContent = formatTime(position);
-  $('#time-total').textContent = formatTime(total);
-
-  const bars = $$('#waveform .wave-bar');
-  const progress = total > 0 ? position / total : 0;
-  for (let i = 0; i < bars.length; i++) {
-    const tPeak = peaks ? peaks[Math.floor(i * peaks.length / bars.length)] : null;
-    const tLive = liveLevels ? liveLevels[Math.floor(i * liveLevels.length / bars.length)] : 0;
-    const baseH = tPeak != null ? Math.max(0.1, tPeak * 0.95) : 0.2 + Math.sin(i * 1.7) * 0.15;
-    const h = playing ? Math.max(baseH, baseH * 0.4 + tLive * 0.7) : baseH;
-    bars[i].style.height = (h * 100).toFixed(1) + '%';
-    if (i / bars.length < progress) bars[i].classList.add('played');
-    else bars[i].classList.remove('played');
+  // Boot the visualizer once. It's harmless (idle bars) until playback starts.
+  if (!circularEQ) {
+    const canvas = $('#fs-eq-canvas');
+    if (canvas) {
+      circularEQ = new CircularEQ(canvas, audioEngine, {
+        // Cover radius keeps in sync with the rendered cover element below
+        // via setCoverRadius() on resize.
+        coverRadiusPx: getCoverRadiusPx(),
+      });
+    }
   }
-  $('#playhead').style.left = (progress * 100) + '%';
 
+  // Close button.
+  $('#fs-close').addEventListener('click', () => closeFullscreen());
+
+  // Transport controls.
+  $('#fs-play').addEventListener('click', () => audioEngine.toggle());
+  fs.querySelector('[data-action="next"]').addEventListener('click', () => audioEngine.next());
+  fs.querySelector('[data-action="prev"]').addEventListener('click', () => audioEngine.prev());
+
+  // Progress bar — click + drag to seek.
+  const prog = $('#fs-progress');
+  let dragging = false;
+  const seekFromEvent = ev => {
+    const rect = prog.getBoundingClientRect();
+    const x = ('clientX' in ev) ? ev.clientX : ev.touches?.[0]?.clientX;
+    if (x == null) return;
+    const f = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+    audioEngine.seek(f);
+  };
+  prog.addEventListener('pointerdown', ev => {
+    dragging = true; prog.setPointerCapture(ev.pointerId); seekFromEvent(ev);
+  });
+  prog.addEventListener('pointermove', ev => { if (dragging) seekFromEvent(ev); });
+  const stopDrag = ev => {
+    dragging = false;
+    try { prog.releasePointerCapture(ev.pointerId); } catch {}
+  };
+  prog.addEventListener('pointerup', stopDrag);
+  prog.addEventListener('pointercancel', stopDrag);
+
+  // Keep cover radius in sync with the rendered .fs-cover element on resize.
+  // The element's CSS size is what the EQ needs to know to position the
+  // inner ring of bars correctly.
+  window.addEventListener('resize', () => {
+    if (circularEQ) circularEQ.setCoverRadius(getCoverRadiusPx());
+  });
+}
+
+function getCoverRadiusPx() {
+  const el = $('#fs-cover-disc');
+  if (!el) return 140;
+  const rect = el.getBoundingClientRect();
+  // Fall back to 140 if it hasn't laid out yet (overlay was hidden).
+  return Math.max(60, (rect.width || 280) / 2);
+}
+
+function openFullscreen() {
+  const fs = $('#player-fs');
+  if (!fs || fs.classList.contains('open')) return;
+  fs.classList.add('open');
+  fs.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  // After the layout actually runs (next frame), tell the EQ where the
+  // cover is. Otherwise getCoverRadiusPx() reads zero.
+  requestAnimationFrame(() => {
+    if (circularEQ) circularEQ.setCoverRadius(getCoverRadiusPx());
+  });
+}
+
+function closeFullscreen() {
+  const fs = $('#player-fs');
+  if (!fs) return;
+  fs.classList.remove('open');
+  fs.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  // Pause playback on close — feels right; the user explicitly dismissed
+  // the player. Comment this out if you prefer continuous background play.
+  audioEngine.pause();
+}
+
+/* ─── single global UI sync ─── */
+function syncAllUI(state) {
+  const { track, playing, position, duration, queue, index } = state;
+
+  // ── Inline tracklist counter + active row ──
+  const counter = $('#player-counter');
+  if (counter) {
+    counter.innerHTML = queue.length
+      ? `<span class="acid">${String(index + 1).padStart(2, '0')}</span><span style="opacity:0.4"> / ${String(queue.length).padStart(2, '0')}</span>`
+      : '— / —';
+  }
   $$('#tracklist .track-row').forEach((el, i) => {
     el.classList.toggle('active', i === index);
     const eq = el.querySelector('.eq-bars');
@@ -396,6 +522,97 @@ function updatePlayerUI(state) {
       if (eq) eq.style.display = 'none';
       if (num) num.style.display = '';
     }
+  });
+
+  // ── Auto-open the overlay the first time playback starts ──
+  // Use `track` rather than `playing` because pressing play on a paused track
+  // should also re-open the overlay if it was closed.
+  if (track && playing) openFullscreen();
+
+  // ── Fullscreen overlay sync ──
+  const fs = $('#player-fs');
+  if (!fs) return;
+
+  $('#fs-status').textContent = playing ? 'NOW PLAYING' : 'PAUSED';
+  $('#fs-dot').style.animationPlayState = playing ? 'running' : 'paused';
+  $('#fs-play').textContent = playing ? '❚❚' : '▶';
+  $('#fs-now-title').textContent = track?.title || '—';
+  $('#fs-now-meta').textContent = track
+    ? `THE RIZAEV — ${currentRelease?.title || ''}${track.bpm ? ` · ${track.bpm} BPM` : ''}`
+    : '—';
+  $('#fs-release').textContent = currentRelease
+    ? `${currentRelease.title.toUpperCase()} · ${(currentRelease.type || 'sgl').toUpperCase()}`
+    : '—';
+
+  // Spinning-vinyl effect: toggle a class that runs the rotate animation.
+  // Pausing freezes the rotation in place rather than resetting to 0deg.
+  const disc = $('#fs-cover-disc');
+  if (disc) disc.classList.toggle('spinning', playing);
+
+  // Cover image / fallback gradient.
+  const img = $('#fs-cover-img');
+  const fb = $('#fs-cover-fallback');
+  if (currentRelease) {
+    const grad = `linear-gradient(135deg, ${currentRelease.accent_color || '#c6ff00'}, ${currentRelease.accent_color_2 || '#000'})`;
+    if (currentRelease.cover_url) {
+      img.src = currentRelease.cover_url;
+      img.style.display = '';
+      fb.style.display = 'none';
+    } else {
+      img.style.display = 'none';
+      fb.style.display = '';
+      fb.style.background = grad;
+      fb.textContent = (currentRelease.title || '').slice(0, 24);
+    }
+  }
+
+  // Sidebar tracklist — only re-render when the queue identity changes.
+  const sidebarTitle = $('#fs-sidebar-title');
+  if (sidebarTitle && currentRelease) sidebarTitle.textContent = currentRelease.title;
+  renderFsSidebar(state);
+
+  // Progress + time.
+  const total = duration || track?.duration || 0;
+  const frac = total > 0 ? Math.min(1, position / total) : 0;
+  $('#fs-time-cur').textContent = formatTime(position);
+  $('#fs-time-total').textContent = formatTime(total);
+  $('#fs-progress-fill').style.width = (frac * 100).toFixed(2) + '%';
+  $('#fs-progress-thumb').style.left = (frac * 100).toFixed(2) + '%';
+}
+
+// Cache the queue identity to avoid re-rendering the sidebar every frame.
+let _lastSidebarQueueKey = '';
+function renderFsSidebar(state) {
+  const list = $('#fs-sidebar-list');
+  if (!list) return;
+  const queue = state.queue || [];
+  const key = queue.map(t => t.id).join('|');
+  const needsRebuild = key !== _lastSidebarQueueKey;
+
+  if (needsRebuild) {
+    list.innerHTML = queue.map((t, i) => `
+      <button class="fs-row" data-idx="${i}">
+        <span class="fs-row-num mono">${String(i + 1).padStart(2, '0')}</span>
+        <span class="fs-row-eq" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="fs-row-body">
+          <span class="fs-row-title">${escapeHTML(t.title)}</span>
+          <span class="fs-row-meta mono">${formatTime(t.duration || 0)}</span>
+        </span>
+      </button>
+    `).join('');
+    list.querySelectorAll('.fs-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const i = +row.dataset.idx;
+        audioEngine.playIndex(i, true);
+      });
+    });
+    _lastSidebarQueueKey = key;
+  }
+
+  // Update active state every tick — cheap.
+  list.querySelectorAll('.fs-row').forEach((row, i) => {
+    row.classList.toggle('active', i === state.index);
+    row.classList.toggle('playing', i === state.index && state.playing);
   });
 }
 
@@ -438,29 +655,6 @@ function renderLatest(release) {
   $('[data-action="play-release"]').addEventListener('click', () => {
     audioEngine.setQueue(release.tracks || []);
     audioEngine.playIndex(0, true);
-    $('#player-section').scrollIntoView({ behavior: 'smooth' });
-  });
-
-  const tl = $('#tracklist');
-  tl.innerHTML = (release.tracks || []).map((t, i) => `
-    <button class="track-row" data-idx="${i}">
-      <span class="track-num">${t.n || String(i + 1).padStart(2, '0')}</span>
-      <span class="eq-bars" style="display:none"><span></span><span></span><span></span><span></span></span>
-      <span class="track-body">
-        <span class="track-title">${escapeHTML(t.title)}</span>
-        <span class="track-meta mono">
-          ${t.bpm ? `${t.bpm} BPM · ` : ''}${formatTime(t.duration || 0)}
-        </span>
-      </span>
-      <span class="track-play">▶</span>
-    </button>
-  `).join('');
-
-  $$('#tracklist .track-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const i = +row.dataset.idx;
-      audioEngine.playIndex(i, true);
-    });
   });
 }
 

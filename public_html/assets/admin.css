@@ -1,6 +1,6 @@
 /* THE RIZAEV — admin styles */
 
-/* ─── login ─── */
+/* ─── login (legacy — not used since auth is by secret URL) ─── */
 .login-wrap {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
@@ -12,22 +12,6 @@
   border: 1px solid var(--line-strong);
   background: rgba(255,255,255,0.02);
   display: flex; flex-direction: column; gap: 16px;
-}
-.login-brand { display: flex; justify-content: center; }
-.login-title {
-  font-size: 32px; font-weight: 900; text-align: center;
-  letter-spacing: -0.02em; margin-top: 8px;
-}
-.login-title em { color: var(--acid); font-style: italic; }
-.login-sub {
-  text-align: center; font-size: 11px; letter-spacing: 0.3em;
-  opacity: 0.5; margin-bottom: 16px;
-}
-.login-btn { margin-top: 16px; padding: 16px; }
-.login-err {
-  color: var(--magenta); font-family: 'JetBrains Mono', monospace;
-  font-size: 11px; letter-spacing: 0.15em;
-  min-height: 14px; margin-top: 8px; text-align: center;
 }
 
 /* ─── shell ─── */
@@ -89,7 +73,7 @@
   border: 1px solid var(--line-strong);
   color: var(--muted-2);
 }
-.admin-body { padding: 32px; }
+.admin-body { padding: 32px; padding-bottom: 120px; /* room for bulk bar */ }
 
 /* ─── page head ─── */
 .page-head {
@@ -116,6 +100,71 @@
 .stat-val { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; margin-top: 8px; font-style: italic; }
 .stat-delta { font-size: 11px; letter-spacing: 0.15em; opacity: 0.55; margin-top: 8px; }
 
+/* ─── DASHBOARD ANALYTICS GRID ─── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px; margin-bottom: 24px;
+}
+@media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+
+.dash-chart-card { padding: 20px 22px; }
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  background:
+    linear-gradient(0deg, rgba(255,255,255,0.02) 1px, transparent 1px) 0 100% / 100% 25%,
+    linear-gradient(0deg, rgba(255,255,255,0.02) 1px, transparent 1px) 0 75% / 100% 25%,
+    linear-gradient(0deg, rgba(255,255,255,0.02) 1px, transparent 1px) 0 50% / 100% 25%,
+    linear-gradient(0deg, rgba(255,255,255,0.02) 1px, transparent 1px) 0 25% / 100% 25%;
+  background-repeat: no-repeat;
+}
+.dash-chart {
+  width: 100%; height: 100%;
+  display: block;
+}
+.dash-chart rect:hover { opacity: 1 !important; }
+
+.dash-top-card { padding: 20px 22px; }
+.top-list { display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow-y: auto; }
+.top-row {
+  display: grid;
+  grid-template-columns: 24px 32px 1fr 70px 60px;
+  gap: 10px; align-items: center;
+  padding: 6px 0;
+}
+.top-rank { font-size: 11px; opacity: 0.5; }
+.top-cover {
+  width: 32px; height: 32px;
+  position: relative; overflow: hidden;
+  flex-shrink: 0;
+}
+.top-cover img { width: 100%; height: 100%; object-fit: cover; }
+.top-meta { min-width: 0; }
+.top-title {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.top-sub {
+  font-size: 9px; letter-spacing: 0.15em; opacity: 0.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.top-bar-wrap {
+  height: 4px;
+  background: rgba(255,255,255,0.05);
+  position: relative;
+}
+.top-bar {
+  height: 100%;
+  background: var(--acid);
+  box-shadow: 0 0 6px var(--acid);
+}
+.top-plays {
+  font-size: 12px; text-align: right;
+}
+
 /* ─── drop rows on dashboard ─── */
 .drop-row {
   display: flex; align-items: center; gap: 14px;
@@ -139,6 +188,7 @@
 }
 .drop-status.published { color: var(--acid); }
 .drop-status.draft     { color: var(--magenta); }
+.drop-status.scheduled { color: var(--cyan); }
 
 /* ─── stepper ─── */
 .stepper {
@@ -158,26 +208,110 @@
 .step-item.done { opacity: 0.85; color: var(--acid); }
 .step-n { color: var(--acid); }
 
-/* ─── dropzone (audio) ─── */
+/* ─── autosave note ─── */
+.autosave-note {
+  margin-top: 16px; padding: 10px 14px;
+  font-size: 10px; letter-spacing: 0.2em;
+  opacity: 0.5;
+  border: 1px dashed rgba(198,255,0,0.2);
+  text-align: center;
+}
+
+/* ─── audio dropzone ─── */
 .dz-icon { display: flex; justify-content: center; margin-bottom: 18px; }
 .dz-title { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
 .dz-sub { font-size: 12px; letter-spacing: 0.2em; opacity: 0.6; }
 
+.dropzone.dropzone-compact { padding: 24px 16px; }
+.dropzone.dropzone-compact .dz-icon { margin-bottom: 8px; }
+.dropzone.dropzone-compact .dz-title { font-size: 16px; margin-bottom: 4px; }
+.dropzone.dropzone-compact .dz-sub { font-size: 10px; }
+
+/* ─── track row ─── */
 .file-row {
   display: flex; align-items: center; gap: 14px;
   padding: 14px 16px; border: 1px solid var(--line);
   background: rgba(255,255,255,0.02);
+  transition: border-color 0.15s, transform 0.15s, opacity 0.15s;
 }
+.file-row.dragging { opacity: 0.5; border-color: var(--acid); }
+.file-row.drop-target {
+  border-top: 2px solid var(--acid);
+  transform: translateY(2px);
+}
+.file-handle {
+  cursor: grab; font-size: 18px;
+  color: rgba(255,255,255,0.4);
+  user-select: none;
+  letter-spacing: -2px; padding: 4px 6px;
+  flex-shrink: 0;
+}
+.file-handle:hover { color: var(--acid); }
+.file-row.dragging .file-handle { cursor: grabbing; }
+
+/* Inline preview ▶ button */
+.file-play {
+  width: 36px; height: 36px; flex-shrink: 0;
+  background: rgba(198,255,0,0.06);
+  border: 1px solid rgba(198,255,0,0.4);
+  color: var(--acid);
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.file-play:hover {
+  background: rgba(198,255,0,0.12);
+}
+.file-play:active { transform: scale(0.94); }
+.file-play.playing {
+  background: var(--acid);
+  color: #000;
+  box-shadow: 0 0 12px rgba(198,255,0,0.5);
+}
+.file-play.disabled {
+  opacity: 0.3; cursor: not-allowed;
+  border-color: var(--line-strong); background: transparent;
+}
+
 .file-ico {
   width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid rgba(198,255,0,0.3);
   flex-shrink: 0;
+  display: none; /* reserved space hidden — file-play replaces it visually */
 }
-.file-meta {
-  font-size: 10px; letter-spacing: 0.15em; opacity: 0.7;
-  margin-top: 6px;
+.track-title-input {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 14px; font-weight: 600;
 }
+.track-row-meta {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 4px;
+}
+.track-bpm-input {
+  width: 80px; padding: 4px 8px !important;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: 0.1em;
+}
+.track-bpm-input::-webkit-outer-spin-button,
+.track-bpm-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.file-meta { font-size: 10px; letter-spacing: 0.15em; opacity: 0.7; }
+
+.file-replace {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--acid);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 0.2em;
+  padding: 8px 12px; cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+.file-replace:hover { border-color: var(--acid); background: rgba(198,255,0,0.08); }
 .file-x {
   width: 32px; height: 32px;
   background: transparent; border: 1px solid var(--line-strong);
@@ -193,7 +327,12 @@
   gap: 12px; flex-wrap: wrap;
 }
 
-/* ─── cover dropzone ─── */
+/* ─── COVER step ─── */
+.cover-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+@media (max-width: 880px) { .cover-grid { grid-template-columns: 1fr; } }
+
 .cover-drop {
   aspect-ratio: 1;
   border: 2px dashed rgba(198,255,0,0.3);
@@ -211,12 +350,144 @@
   align-items: center; justify-content: center;
   color: var(--acid); opacity: 0.5;
 }
-.color-chip {
-  width: 36px; height: 36px;
-  border: 2px solid transparent; cursor: pointer;
-  border-radius: 50%; padding: 0;
+
+.cover-preview {
+  aspect-ratio: 1;
+  display: flex; align-items: flex-end;
+  padding: 16px;
+  font-size: 32px; font-weight: 900;
+  color: #fff; letter-spacing: -0.02em;
+  word-break: break-word;
+  transition: background 0.15s;
 }
+
+/* ─── color picker ─── */
+.color-block { display: flex; flex-direction: column; gap: 10px; }
+.color-controls { display: flex; gap: 10px; align-items: stretch; }
+.color-swatch {
+  position: relative;
+  width: 56px; height: 44px;
+  border: 1px solid var(--line-strong);
+  cursor: pointer; flex-shrink: 0;
+  display: block;
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,0.05) 25%, transparent 25%);
+  background-size: 12px 12px;
+}
+.color-swatch:hover { border-color: var(--acid); }
+.color-swatch input[type="color"] {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+  border: none; padding: 0; margin: 0;
+  background: transparent;
+}
+.color-hex {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: 0.15em; text-transform: uppercase;
+}
+.color-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-chip {
+  width: 28px; height: 28px;
+  border: 2px solid transparent;
+  cursor: pointer; border-radius: 50%; padding: 0;
+  transition: transform 0.1s;
+}
+.color-chip:hover { transform: scale(1.1); }
 .color-chip.active { border-color: #fff; box-shadow: 0 0 0 2px var(--acid); }
+
+/* ─── mockups (cover step) ───
+ * Two side-by-side previews showing how the cover will look on the live
+ * site. Vault card (homepage carousel) on the left, latest-release strip
+ * on the right. Both update live when the user changes colors or cover. */
+.mockup-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 880px) { .mockup-grid { grid-template-columns: 1fr; } }
+.mockup {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.02);
+  padding: 14px;
+}
+.mockup-tag {
+  font-size: 9px; letter-spacing: 0.25em;
+  color: var(--acid); opacity: 0.7;
+  margin-bottom: 12px;
+}
+.mockup-vault-card {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+.mockup-vault-card img { width: 100%; height: 100%; object-fit: cover; }
+.mockup-idx {
+  position: absolute; top: 8px; left: 10px;
+  font-size: 9px; letter-spacing: 0.2em;
+  color: #fff; font-weight: 600;
+}
+.mockup-badge {
+  position: absolute; top: 8px; right: 10px;
+  font-size: 8px; letter-spacing: 0.2em;
+  border: 1px solid rgba(255,255,255,0.5);
+  padding: 3px 6px;
+  background: rgba(0,0,0,0.3);
+}
+.mockup-year {
+  position: absolute; bottom: 6px; left: 10px;
+  font-size: 32px; font-weight: 800;
+  letter-spacing: -0.04em; color: #fff;
+  font-style: italic; line-height: 1;
+}
+.mockup-card-meta {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 10px;
+}
+.mockup-card-title {
+  font-size: 16px; font-weight: 800; letter-spacing: -0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mockup-listen {
+  font-size: 9px; letter-spacing: 0.25em;
+  color: var(--acid); font-weight: 700;
+}
+
+/* Latest-release strip mockup */
+.mockup-player-row {
+  width: 100%; aspect-ratio: 1;
+  position: relative; overflow: hidden;
+}
+.mockup-player-row img { width: 100%; height: 100%; object-fit: cover; }
+.mockup-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: flex-end;
+  padding: 14px;
+  font-size: 22px; font-weight: 900;
+  color: #fff; line-height: 0.9;
+  letter-spacing: -0.03em;
+}
+.mockup-player-meta {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 10px;
+}
+.mockup-player-title {
+  font-size: 18px; font-weight: 900;
+  letter-spacing: -0.03em; line-height: 1;
+}
+.mockup-player-sub { font-size: 10px; letter-spacing: 0.2em; opacity: 0.6; }
+.mockup-bars {
+  display: flex; gap: 1px; align-items: flex-end;
+  height: 36px; margin-top: 6px;
+}
+.mockup-bars span {
+  flex: 1; min-width: 1px;
+  background: rgba(255,255,255,0.2);
+  transition: background 0.15s, height 0.15s;
+}
 
 /* ─── publish review ─── */
 .preview-cover {
@@ -234,8 +505,34 @@
   display: flex; flex-direction: column; gap: 4px;
   padding: 10px 14px; border: 1px solid var(--line);
 }
+.schedule-note {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(0,217,255,0.4);
+  background: rgba(0,217,255,0.05);
+  font-size: 11px; letter-spacing: 0.15em;
+}
 
-/* ─── catalog table ─── */
+/* ─── catalog ─── */
+.catalog-toolbar {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 16px; padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.02);
+}
+.catalog-search {
+  flex: 1; min-width: 240px;
+  padding: 10px 14px !important;
+  font-size: 13px;
+}
+.catalog-pills {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+}
+.catalog-pills .chip {
+  padding: 7px 10px;
+  font-size: 10px;
+}
+
 .catalog-table {
   border: 1px solid var(--line);
   background: rgba(255,255,255,0.02);
@@ -243,8 +540,8 @@
 .catalog-header,
 .catalog-row {
   display: grid;
-  grid-template-columns: 40px 1.6fr 80px 80px 80px 100px 100px 120px;
-  gap: 16px; padding: 14px 20px; align-items: center;
+  grid-template-columns: 28px 36px 1.6fr 70px 70px 70px 90px 110px 150px;
+  gap: 14px; padding: 14px 18px; align-items: center;
 }
 .catalog-header {
   font-size: 10px; letter-spacing: 0.25em; opacity: 0.5;
@@ -252,9 +549,17 @@
 }
 .catalog-row { border-bottom: 1px solid rgba(255,255,255,0.04); }
 .catalog-row:hover { background: rgba(255,255,255,0.02); }
+.catalog-row.selected {
+  background: rgba(198,255,0,0.05);
+  /* inset box-shadow draws an "inner border" that doesn't shift grid cells —
+   * a regular border-left would push all the grid columns to the right and
+   * break alignment with the header row. */
+  box-shadow: inset 2px 0 0 var(--acid);
+}
 .cat-cover {
   width: 44px; height: 44px;
   position: relative; overflow: hidden;
+  flex-shrink: 0;
 }
 .cat-cover img { width: 100%; height: 100%; object-fit: cover; }
 .icon-btn {
@@ -266,18 +571,114 @@
   text-decoration: none;
 }
 .icon-btn:hover { border-color: var(--acid); color: var(--acid); }
+.icon-btn-danger:hover { border-color: var(--magenta); color: var(--magenta); }
+
+/* Status toggle pill (in catalog row) */
+.status-toggle {
+  background: transparent;
+  border: 1px solid transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 0.2em;
+  padding: 6px 10px;
+  cursor: pointer; text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.status-toggle.published { color: var(--acid); }
+.status-toggle.draft     { color: var(--magenta); }
+.status-toggle.scheduled { color: var(--cyan); }
+.status-toggle:hover {
+  border-color: currentColor;
+  background: rgba(255,255,255,0.03);
+}
+
+/* Bulk-actions floating bar — fixed at the bottom of the viewport when
+ * one or more rows are checked. Doesn't push catalog content because
+ * .admin-body has bottom padding reserved for it. */
+.bulk-bar {
+  position: fixed; left: 280px; right: 0; bottom: 0;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap;
+  padding: 14px 32px;
+  background: rgba(10,10,10,0.95);
+  border-top: 1px solid var(--acid);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  animation: bulk-slide-up 0.2s ease-out;
+}
+@keyframes bulk-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@media (max-width: 760px) {
+  .bulk-bar { left: 0; padding: 12px 16px; }
+}
+.bulk-info {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; letter-spacing: 0.2em;
+}
+.bulk-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.bulk-actions .btn-ghost { padding: 10px 14px; font-size: 11px; }
+
+/* ─── GLOBAL DROP overlay ───
+ * Appears across the full page while a file is being dragged from outside
+ * the browser. Disappears as soon as the drag leaves or completes. */
+.global-drop-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5,5,5,0.85);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.gdo-card {
+  border: 2px dashed var(--acid);
+  padding: 60px 80px;
+  background: rgba(198,255,0,0.04);
+  text-align: center;
+  box-shadow: 0 0 80px rgba(198,255,0,0.3);
+}
+.gdo-icon {
+  font-size: 80px; color: var(--acid);
+  line-height: 1; margin-bottom: 16px;
+  text-shadow: 0 0 24px rgba(198,255,0,0.6);
+}
+.gdo-title {
+  font-size: 32px; font-weight: 900;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+.gdo-title em { color: var(--acid); font-style: italic; }
+.gdo-sub {
+  font-size: 11px; letter-spacing: 0.3em;
+  color: var(--acid); opacity: 0.7;
+}
+
+/* Disable text selection while drop overlay is up — looks cleaner */
+body:has(.global-drop-overlay[style*="display:flex"]) { user-select: none; }
 
 /* ─── responsive ─── */
 @media (max-width: 760px) {
   .admin-sidebar { display: none; }
-  .admin-body { padding: 16px; }
+  .admin-body { padding: 16px; padding-bottom: 120px; }
   .h1 { font-size: 36px; }
   .stepper { grid-template-columns: repeat(2, 1fr); }
   .stepper .step-item:nth-child(2) { border-right: none; }
   .summary-grid { grid-template-columns: 1fr 1fr; }
   .catalog-header, .catalog-row {
-    grid-template-columns: 1fr 80px 80px;
+    grid-template-columns: 28px 1fr 110px 130px;
   }
-  .catalog-header > *:nth-child(n+5),
-  .catalog-row > *:nth-child(n+5) { display: none; }
+  /* On mobile we show: checkbox · title block · status · actions.
+   * Hide the rest. The columns we keep are always present in the grid. */
+  .catalog-header > *:nth-child(2), .catalog-row > *:nth-child(2),
+  .catalog-header > *:nth-child(4), .catalog-row > *:nth-child(4),
+  .catalog-header > *:nth-child(5), .catalog-row > *:nth-child(5),
+  .catalog-header > *:nth-child(6), .catalog-row > *:nth-child(6),
+  .catalog-header > *:nth-child(7), .catalog-row > *:nth-child(7) {
+    display: none;
+  }
+  .file-row { flex-wrap: wrap; }
+  .file-replace { font-size: 9px; padding: 6px 10px; }
+  .gdo-card { padding: 40px 32px; }
+  .gdo-title { font-size: 22px; }
 }
