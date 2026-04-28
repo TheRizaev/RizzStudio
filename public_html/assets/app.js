@@ -469,11 +469,8 @@ function wireFullscreenPlayer() {
 }
 
 function getCoverRadiusPx() {
-  const el = $('#fs-cover-disc');
-  if (!el) return 140;
-  const rect = el.getBoundingClientRect();
-  // Fall back to 140 if it hasn't laid out yet (overlay was hidden).
-  return Math.max(60, (rect.width || 280) / 2);
+  // Cover hidden — let the nebula reach close to center.
+  return 24;
 }
 
 function openFullscreen() {

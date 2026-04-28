@@ -71,16 +71,7 @@
 /* Absolute-centered. Size scales with viewport so it always feels right.
  * 22vmin works out to roughly 280px on a 1280×800 desktop and 200px on a
  * portrait phone — both look balanced inside their respective ring sizes. */
-.fs-cover {
-  position: absolute;
-  left: 50%; top: 50%;
-  transform: translate(-50%, -50%);
-  width: 22vmin;
-  height: 22vmin;
-  min-width: 200px; min-height: 200px;
-  max-width: 320px; max-height: 320px;
-  pointer-events: none; /* purely visual */
-}
+.fs-cover { display: none !important; }
 
 /* The disc itself — a clipped circle that rotates while playing. */
 .fs-cover-disc {
