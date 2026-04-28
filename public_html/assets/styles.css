@@ -1,0 +1,264 @@
+/* THE RIZAEV — global styles
+ * Single CSS file for all pages. Brand DNA: dark base, acid green (#c6ff00),
+ * Space Grotesk + JetBrains Mono.
+ *
+ * Performance notes:
+ *  - Animations use CSS @keyframes only — no JS rAF for rotations or sweeps.
+ *  - GPU-friendly (transform / opacity only).
+ *  - Critical above-the-fold rules come first.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --acid: #c6ff00;
+  --magenta: #ff10a8;
+  --cyan: #00d9ff;
+  --indigo: #3b00ff;
+  --bg: #050505;
+  --bg-2: #0a0a0a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --text: #fff;
+  --muted: rgba(255, 255, 255, 0.55);
+  --muted-2: rgba(255, 255, 255, 0.7);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--text);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body { overflow-x: hidden; min-height: 100vh; }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+input, textarea { font-family: inherit; }
+input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.3); }
+input:focus, textarea:focus { outline: none; border-color: var(--acid) !important; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #1f1f1f; }
+::-webkit-scrollbar-thumb:hover { background: var(--acid); }
+
+/* ─── shared scan-line + vignette texture ─── */
+.tex-scan {
+  position: fixed; inset: 0; pointer-events: none; z-index: 100;
+  background-image: repeating-linear-gradient(0deg,
+    rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 1px,
+    transparent 1px, transparent 3px);
+  mix-blend-mode: multiply; opacity: 0.5;
+}
+.tex-vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.6) 100%);
+}
+
+/* ─── keyframes ─── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(1.4); }
+}
+@keyframes spin-cw  { from { transform: rotate(0); }       to { transform: rotate(360deg); } }
+@keyframes spin-ccw { from { transform: rotate(0); }       to { transform: rotate(-360deg); } }
+@keyframes marquee  { from { transform: translateX(0); }   to { transform: translateX(-50%); } }
+@keyframes hero-flow { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+@keyframes toast-in {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── shared component primitives ─── */
+.acid       { color: var(--acid); }
+.mono       { font-family: 'JetBrains Mono', monospace; }
+.live-dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--acid); box-shadow: 0 0 8px var(--acid);
+  animation: pulse 1.4s infinite ease-in-out;
+}
+
+.btn-acid {
+  background: var(--acid); color: #000; border: none;
+  padding: 14px 24px; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+  transition: filter 0.15s, transform 0.15s;
+}
+.btn-acid:hover { filter: brightness(1.1); }
+.btn-acid:active { transform: translateY(1px); }
+.btn-acid:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent; color: #fff; cursor: pointer;
+  border: 1px solid var(--line-strong);
+  padding: 14px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.2em;
+}
+.btn-ghost:hover { border-color: var(--acid); color: var(--acid); }
+
+/* ─── R/mark logo (used everywhere) ─── */
+.rmark { display: inline-block; flex-shrink: 0; }
+
+/* ─── toast ─── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  padding: 14px 20px; background: #0a0a0a;
+  border: 1px solid var(--acid);
+  box-shadow: 0 0 24px rgba(198,255,0,0.3);
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; letter-spacing: 0.15em;
+  animation: toast-in 0.3s ease-out;
+}
+.toast.err { border-color: var(--magenta); box-shadow: 0 0 24px rgba(255,16,168,0.3); }
+
+/* ─── hero "STUDIO" italic with sweep ─── */
+.hero-flow {
+  -webkit-text-stroke: 2px var(--acid);
+  color: transparent;
+  background-image: linear-gradient(110deg,
+    rgba(198,255,0,0)    0%,
+    rgba(198,255,0,0)    38%,
+    rgba(198,255,0,0.95) 48%,
+    rgba(255,255,255,1)  50%,
+    rgba(198,255,0,0.95) 52%,
+    rgba(198,255,0,0)    62%,
+    rgba(198,255,0,0)   100%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: hero-flow 6s linear infinite;
+}
+
+/* ─── waveform bars ─── */
+.wave-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  background: rgba(255,255,255,0.2);
+  transition: background-color 0.05s linear, height 0.06s linear;
+  will-change: height;
+}
+.wave-bar.played {
+  background: var(--acid);
+  box-shadow: 0 0 6px var(--acid);
+}
+
+/* ─── EQ animated bars (NOW PLAYING indicator) ─── */
+.eq-bars {
+  display: inline-flex; align-items: flex-end;
+  gap: 2px; height: 14px;
+}
+.eq-bars span {
+  width: 3px; height: 100%;
+  background: var(--acid);
+  transform-origin: bottom;
+  animation: eq 0.6s ease-in-out infinite;
+}
+.eq-bars span:nth-child(1) { animation-delay: 0s; }
+.eq-bars span:nth-child(2) { animation-delay: 0.15s; }
+.eq-bars span:nth-child(3) { animation-delay: 0.3s; }
+.eq-bars span:nth-child(4) { animation-delay: 0.45s; }
+
+/* ─── form inputs (admin) ─── */
+.field-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 0.25em;
+  color: rgba(198,255,0,0.85);
+  margin-bottom: 8px;
+}
+.field-input,
+.field-textarea {
+  width: 100%; padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line-strong);
+  color: #fff; font-size: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  outline: none;
+}
+.field-textarea { min-height: 100px; resize: vertical; }
+
+.chip {
+  padding: 10px 14px; background: transparent; color: #fff;
+  border: 1px solid var(--line-strong);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.2em; cursor: pointer;
+}
+.chip.active {
+  background: rgba(198,255,0,0.1);
+  border-color: var(--acid); color: var(--acid);
+}
+
+/* ─── dropzone ─── */
+.dropzone {
+  border: 2px dashed rgba(198,255,0,0.3);
+  padding: 60px 24px; text-align: center;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.dropzone:hover,
+.dropzone.drag-over {
+  border-color: var(--acid);
+  background: rgba(198,255,0,0.04);
+}
+
+/* ─── progress bar ─── */
+.bar-track {
+  height: 2px; background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%; background: var(--acid);
+  box-shadow: 0 0 6px var(--acid);
+  transition: width 0.18s linear;
+}
+
+/* ─── shared layout helpers ─── */
+.container { max-width: 1440px; margin: 0 auto; }
+.row { display: flex; align-items: center; }
+.spread { display: flex; justify-content: space-between; align-items: center; }
+.pad-x { padding-left: 56px; padding-right: 56px; }
+@media (max-width: 760px) {
+  .pad-x { padding-left: 20px; padding-right: 20px; }
+}
+
+/* ─── card ─── */
+.card {
+  padding: 24px; margin-bottom: 24px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.02);
+}
+.card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 18px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.card-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; letter-spacing: 0.3em; color: var(--acid);
+}
+
+/* ─── focus ring (a11y) ─── */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
+}
+
+/* ─── utility ─── */
+.hidden { display: none !important; }
+.fade-in { animation: fade-in 0.4s ease-out; }

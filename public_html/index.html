@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>RIZZ STUDIO — Music made by the machine</title>
+<meta name="description" content="Neural artist. Music made by the machine, curated by the ghost. New releases, live player, full back catalog.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="RIZZ STUDIO — The Rizaev">
+<meta property="og:description" content="Music made by the machine, curated by the ghost.">
+<meta property="og:image" content="/assets/og-cover.jpg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23050505'/%3E%3Crect x='22' y='20' width='14' height='60' fill='%23c6ff00'/%3E%3Crect x='22' y='20' width='42' height='14' fill='%23c6ff00'/%3E%3Crect x='22' y='46' width='38' height='14' fill='%23c6ff00'/%3E%3Crect x='50' y='20' width='14' height='40' fill='%23c6ff00'/%3E%3Cpolygon points='44,54 60,54 78,80 62,80' fill='%23c6ff00'/%3E%3Ccircle cx='74' cy='26' r='4' fill='%23ffffff'/%3E%3C/svg%3E">
+
+<!-- Preload key assets so first paint isn't blocked -->
+<link rel="preload" as="style" href="/assets/styles.css">
+<link rel="preload" as="style" href="/assets/main.css">
+<link rel="preload" as="script" href="/assets/app.js" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="/assets/main.css">
+</head>
+<body>
+  <div id="root">
+    <!-- Critical splash so the page never looks blank -->
+    <div style="min-height: 60vh; display: flex; align-items: center; justify-content: center;">
+      <span class="live-dot"></span>
+    </div>
+  </div>
+
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

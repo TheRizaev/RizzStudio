@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404 — Signal Lost · RIZZ STUDIO</title>
+<meta name="description" content="The transmission you're looking for doesn't exist on this frequency.">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23050505'/%3E%3Crect x='22' y='20' width='14' height='60' fill='%23c6ff00'/%3E%3Crect x='22' y='20' width='42' height='14' fill='%23c6ff00'/%3E%3Crect x='22' y='46' width='38' height='14' fill='%23c6ff00'/%3E%3Crect x='50' y='20' width='14' height='40' fill='%23c6ff00'/%3E%3Cpolygon points='44,54 60,54 78,80 62,80' fill='%23c6ff00'/%3E%3Ccircle cx='74' cy='26' r='4' fill='%23ffffff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/styles.css">
+<style>
+  /* Page-specific styles for /404 — composed of three RGB-shifted layers
+   * over scan-lines + a sweeping beam, mirroring the FooterHero treatment
+   * so the page reads as part of the same world rather than a hosting fallback. */
+  .nf-root {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+    position: relative; overflow: hidden;
+  }
+  .nf-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 28px 56px;
+    border-bottom: 1px solid var(--line);
+    position: relative; z-index: 5;
+  }
+  .nf-nav .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.25em;
+    color: var(--acid); opacity: 0.85;
+  }
+  .nf-stage {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 60px 24px;
+    position: relative;
+  }
+  .nf-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.3em;
+    color: var(--acid); margin-bottom: 24px;
+  }
+  .nf-glitch {
+    position: relative;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 900; line-height: 0.85; letter-spacing: -0.04em;
+    font-size: clamp(140px, 26vw, 360px);
+    margin: 0;
+  }
+  .nf-glitch .nf-layer { display: block; }
+  /* Stack three identical "404" layers so the rAF jitter in JS shifts each
+   * one in screen-blend mode → chromatic-aberration glitch identical to footer. */
+  .nf-magenta, .nf-cyan {
+    position: absolute; inset: 0;
+    mix-blend-mode: screen; pointer-events: none;
+  }
+  .nf-base {
+    position: relative;
+    color: var(--acid);
+    text-shadow:
+      0 0 20px rgba(198,255,0,0.6),
+      0 0 40px rgba(198,255,0,0.3);
+  }
+  .nf-magenta { color: var(--magenta); }
+  .nf-cyan    { color: var(--cyan); }
+  .nf-scanlines {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg,
+      rgba(198,255,0,0.06) 0,
+      rgba(198,255,0,0.06) 1px,
+      transparent 1px, transparent 4px);
+    z-index: 2;
+  }
+  .nf-beam {
+    position: absolute; left: 0; right: 0; height: 24px;
+    background: linear-gradient(to bottom,
+      transparent, rgba(198,255,0,0.18), transparent);
+    pointer-events: none; z-index: 3; mix-blend-mode: screen;
+  }
+
+  .nf-message {
+    margin-top: 32px;
+    font-size: clamp(20px, 2.4vw, 32px);
+    font-weight: 300; letter-spacing: -0.01em;
+    line-height: 1.3; max-width: 720px;
+  }
+  .nf-message em { color: var(--acid); font-style: italic; font-weight: 400; }
+
+  .nf-meta {
+    margin-top: 36px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.2em;
+    color: var(--muted); opacity: 0.7;
+    display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;
+  }
+  .nf-meta span { display: inline-flex; align-items: center; gap: 8px; }
+  .nf-meta .live-dot { width: 6px; height: 6px; }
+
+  .nf-actions {
+    margin-top: 48px;
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  }
+
+  .nf-footer {
+    padding: 24px 56px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.15em; opacity: 0.5;
+    position: relative; z-index: 5;
+  }
+
+  /* --- terminal-style log under the message ---
+   * Just decorative — gives the page weight and reinforces the "system error"
+   * vibe so the 404 doesn't feel like a generic fallback page. */
+  .nf-log {
+    margin-top: 40px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.05em;
+    color: rgba(255,255,255,0.4);
+    text-align: left;
+    width: 100%; max-width: 560px;
+    border: 1px solid var(--line);
+    padding: 16px 20px;
+    background: rgba(255,255,255,0.02);
+  }
+  .nf-log-line { line-height: 1.7; }
+  .nf-log-time { color: var(--acid); margin-right: 12px; }
+  .nf-log-line .err { color: var(--magenta); }
+
+  @media (max-width: 760px) {
+    .nf-nav, .nf-footer { padding-left: 20px; padding-right: 20px; }
+    .nf-stage { padding: 40px 20px; }
+  }
+</style>
+</head>
+<body>
+  <div class="tex-vignette"></div>
+  <div class="tex-scan"></div>
+
+  <div class="nf-root">
+    <header class="nf-nav">
+      <a href="/" aria-label="Home">
+        <svg viewBox="0 0 100 100" width="42" height="42" style="display:block">
+          <rect x="22" y="20" width="14" height="60" fill="#fff"/>
+          <rect x="22" y="20" width="42" height="14" fill="#fff"/>
+          <rect x="22" y="46" width="38" height="14" fill="#fff"/>
+          <rect x="50" y="20" width="14" height="40" fill="#fff"/>
+          <polygon points="44,54 60,54 78,80 62,80" fill="#fff"/>
+          <circle cx="74" cy="26" r="4" fill="#c6ff00"/>
+        </svg>
+      </a>
+      <span class="mono">// SYSTEM · ERROR 404</span>
+    </header>
+
+    <main class="nf-stage">
+      <div class="nf-scanlines"></div>
+      <div class="nf-beam" id="nf-beam"></div>
+
+      <div class="nf-tag">// SIGNAL LOST</div>
+
+      <h1 class="nf-glitch" aria-label="404">
+        <span class="nf-layer nf-magenta" id="nf-magenta">404</span>
+        <span class="nf-layer nf-cyan" id="nf-cyan">404</span>
+        <span class="nf-layer nf-base" id="nf-base">404</span>
+      </h1>
+
+      <p class="nf-message">
+        the transmission you're looking for <em>doesn't exist</em><br>
+        on this frequency.
+      </p>
+
+      <div class="nf-meta">
+        <span><span class="live-dot" style="background:#ff10a8;box-shadow:0 0 6px #ff10a8"></span>NO SIGNAL</span>
+        <span>STATUS · DROPPED</span>
+        <span id="nf-path">PATH · /</span>
+      </div>
+
+      <div class="nf-log">
+        <div class="nf-log-line"><span class="nf-log-time" id="nf-time1">00:00:01</span> probing route <span id="nf-route">/</span>…</div>
+        <div class="nf-log-line"><span class="nf-log-time" id="nf-time2">00:00:02</span> route not registered in router table.</div>
+        <div class="nf-log-line"><span class="nf-log-time" id="nf-time3">00:00:03</span> <span class="err">connection failed</span> — falling back to /</div>
+      </div>
+
+      <div class="nf-actions">
+        <a class="btn-acid" href="/">↩ BACK TO HOME</a>
+        <a class="btn-ghost" href="/#vault-section">BROWSE THE VAULT →</a>
+      </div>
+    </main>
+
+    <footer class="nf-footer">
+      <span>© 2026 — NEURAL ARTIST</span>
+      <span>NO COOKIES · NO TRACKING · JUST NOISE</span>
+      <span>v.4.7.2 / BUILD 0420</span>
+    </footer>
+  </div>
+
+  <script>
+    /* RGB-glitch jitter — same constants as FooterHero so the visual language
+     * is consistent. Three layers shift independently in sub-pixel ranges,
+     * giving the 404 chromatic aberration without burning frames. */
+    (function () {
+      const base = document.getElementById('nf-base');
+      const r1 = document.getElementById('nf-magenta');
+      const r2 = document.getElementById('nf-cyan');
+      const beam = document.getElementById('nf-beam');
+      function loop(ts) {
+        const t = ts / 1000;
+        const jitterX = Math.sin(t * 30) * 1.5;
+        const jitterY = Math.cos(t * 23) * 0.8;
+        const rgb = Math.sin(t * 8) * 6;
+        base.style.transform = `translate(${jitterX}px, 0)`;
+        r1.style.transform = `translate(${rgb}px, ${jitterY}px)`;
+        r2.style.transform = `translate(${-rgb}px, ${-jitterY}px)`;
+        beam.style.top = `${(t * 80) % 100}%`;
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    })();
+
+    /* Dynamic bits — show the actual requested path the user got 404'd on,
+     * and animate the fake "log" timestamps so the page doesn't feel static. */
+    (function () {
+      const path = document.getElementById('nf-path');
+      const route = document.getElementById('nf-route');
+      const requested = location.pathname.length > 1 ? location.pathname : '/';
+      // Truncate if very long so meta row doesn't break.
+      const display = requested.length > 40 ? requested.slice(0, 37) + '…' : requested;
+      path.textContent = `PATH · ${display}`;
+      route.textContent = display;
+
+      // Animate timestamps once on load — purely cosmetic.
+      const t1 = document.getElementById('nf-time1');
+      const t2 = document.getElementById('nf-time2');
+      const t3 = document.getElementById('nf-time3');
+      const fmt = n => `00:00:${String(n).padStart(2, '0')}`;
+      let i = 0;
+      const id = setInterval(() => {
+        i++;
+        t1.textContent = fmt(Math.min(i, 1));
+        t2.textContent = fmt(Math.min(Math.max(0, i - 1), 2));
+        t3.textContent = fmt(Math.min(Math.max(0, i - 2), 3));
+        if (i >= 4) clearInterval(id);
+      }, 600);
+    })();
+  </script>
+</body>
+</html>

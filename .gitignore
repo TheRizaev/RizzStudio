@@ -1,0 +1,22 @@
+# Кэш Python и виртуальное окружение
+__pycache__/
+*.py[cod]
+venv/
+env/
+.env
+
+# Данные и загруженные медиафайлы (чтобы не забивать репозиторий mp3 файлами)
+python_app/data/audio/
+python_app/data/covers/
+python_app/data/waveforms/
+python_app/data/*.json
+python_app/data/*.tmp
+python_app/data/*.broken.*
+
+# Системные файлы macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Конфигурации редакторов кода
+.vscode/
+.idea/

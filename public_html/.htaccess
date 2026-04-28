@@ -1,0 +1,67 @@
+# THE RIZAEV — Apache routing
+# /media/*   → served directly by Apache from the python_app/data/ folder
+#              (fast, supports Range requests for audio streaming)
+# /api/*     → forwarded to the Python app
+# /admin     → admin.html (then JS handles auth)
+# /release/<slug> → release.html (JS reads slug from URL and fetches from API)
+# everything else → index.html
+
+# ──────────── compression & cache ────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css                "access plus 7 days"
+  ExpiresByType application/javascript  "access plus 7 days"
+  ExpiresByType image/jpeg              "access plus 30 days"
+  ExpiresByType image/png               "access plus 30 days"
+  ExpiresByType image/webp              "access plus 30 days"
+  ExpiresByType image/svg+xml           "access plus 30 days"
+  ExpiresByType audio/mpeg              "access plus 30 days"
+  ExpiresByType application/json        "access plus 0 seconds"
+  ExpiresByType text/html               "access plus 0 seconds"
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Don't cache HTML or the live catalog — content is dynamic.
+  <FilesMatch "\.(html|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  # Long cache for hashed assets — append ?v=N when you ship updates.
+  <FilesMatch "\.(css|js|woff2|jpg|png|webp|svg|mp3)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
+
+# ──────────── routing ────────────
+RewriteEngine On
+
+# Serve audio/covers/waveforms directly from python_app/data via a symlink.
+# IMPORTANT: in cPanel File Manager create a symlink OR alias:
+#   public_html/media -> /home/<USER>/python_app/data
+# (See DEPLOY.md.)
+
+# Pass /api/* to the Python app. cPanel's "Setup Python App" creates an alias
+# (typically /<your-app-uri>) — replace API_BASE below with that path.
+# OR mount the Python app at the domain root and remove this rule.
+#
+# Common pattern: app mounted at /python (you set this in Setup Python App).
+# Then we proxy /api → /python/api.
+#
+# If you mount the app at the domain ROOT, just delete this whole block —
+# /api/* will already hit Flask.
+
+# RewriteRule ^api/(.*)$ /python/api/$1 [L,QSA]
+
+# Pretty URLs:
+RewriteRule ^admin/?$           admin.html  [L]
+RewriteRule ^release/[a-z0-9-]+/?$  release.html [L]
+
+# SPA-ish fallback: anything that's not a real file → index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteCond %{REQUEST_URI} !^/media/
+RewriteRule ^ index.html [L]
