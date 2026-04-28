@@ -9,17 +9,25 @@ Environment variables (set in cPanel Python App → Environment Variables):
     SECRET_KEY            random 32+ char string for signing session cookies
     DATA_DIR              absolute path to data/ (default: ./data next to app.py)
 
-Endpoints:
-    GET  /api/catalog                public catalog (releases + tracks, no drafts)
-    GET  /api/release/<slug>         single release by slug
-    POST /api/play                   increment play count (debounced server-side)
+Endpoints (public):
+    GET  /api/catalog                catalog (releases + tracks, no drafts, no scheduled)
+    GET  /api/release/<slug>         single release by slug (404 if scheduled/draft)
+    POST /api/play                   increment play count + log to plays.jsonl
+
+Endpoints (admin):
     POST /api/admin/login            { password } -> sets session cookie
     POST /api/admin/logout
-    GET  /api/admin/catalog          full catalog incl. drafts (auth required)
+    GET  /api/admin/me
+    GET  /api/admin/catalog          full catalog incl. drafts and scheduled
+    GET  /api/admin/release/<id>     get release for editing
     POST /api/admin/upload/audio     multipart audio file -> { filename, url }
     POST /api/admin/upload/cover     multipart image -> { filename, url }
-    POST /api/admin/release          create/update release (auth required)
-    DELETE /api/admin/release/<id>   delete release (auth required)
+    POST /api/admin/waveform         save peaks JSON
+    POST /api/admin/release          create/update release (id present = update)
+    PATCH /api/admin/release/<id>    partial update
+    POST /api/admin/release/<id>/duplicate    clone a release as a draft
+    DELETE /api/admin/release/<id>   delete release
+    GET  /api/admin/analytics        plays-per-day + top tracks
 """
 from __future__ import annotations
 
@@ -29,7 +37,8 @@ import re
 import secrets
 import time
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from threading import Lock
 
@@ -45,22 +54,21 @@ AUDIO_DIR = DATA_DIR / "audio"
 COVER_DIR = DATA_DIR / "covers"
 WAVEFORM_DIR = DATA_DIR / "waveforms"
 CATALOG_FILE = DATA_DIR / "catalog.json"
+PLAYS_LOG = DATA_DIR / "plays.jsonl"
 
 for d in (AUDIO_DIR, COVER_DIR, WAVEFORM_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_AUDIO = {".mp3", ".m4a", ".wav", ".ogg", ".flac"}
 ALLOWED_IMAGE = {".jpg", ".jpeg", ".png", ".webp"}
-MAX_AUDIO_BYTES = 200 * 1024 * 1024   # 200 MB
-MAX_IMAGE_BYTES = 10 * 1024 * 1024    # 10 MB
+MAX_AUDIO_BYTES = 200 * 1024 * 1024
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
-# Server-side play debounce: same IP+track, 1 plays per 30s.
 PLAY_DEBOUNCE_SEC = 30
 _play_cache: dict[tuple[str, str], float] = {}
 
-# JSON file lock — JSON is rewritten in full on every admin write,
-# so a process-wide lock is enough for one cPanel worker.
 _catalog_lock = Lock()
+_plays_lock = Lock()
 
 
 # ─────────────────────────── app ──────────────────────────────
@@ -69,8 +77,6 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    # SESSION_COOKIE_SECURE is set automatically by Flask when behind HTTPS
-    # via X-Forwarded-Proto if PREFERRED_URL_SCHEME is 'https'.
     PREFERRED_URL_SCHEME="https",
     MAX_CONTENT_LENGTH=MAX_AUDIO_BYTES + 1024 * 1024,
 )
@@ -81,8 +87,23 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def parse_iso(s: str | None) -> datetime | None:
+    """Lenient ISO-8601 parser. Returns None on bad input."""
+    if not s:
+        return None
+    try:
+        # Python's fromisoformat supports the common forms produced by JS
+        # (Date.toISOString) and our own now_iso().
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
 def slugify(text: str) -> str:
-    """URL-safe slug. Keeps a-z 0-9 and dashes."""
     text = (text or "").lower().strip()
     text = re.sub(r"[^a-z0-9]+", "-", text)
     text = re.sub(r"-+", "-", text).strip("-")
@@ -94,14 +115,12 @@ def empty_catalog() -> dict:
 
 
 def load_catalog() -> dict:
-    """Read full catalog. Creates empty file on first run."""
     with _catalog_lock:
         if not CATALOG_FILE.exists():
             CATALOG_FILE.write_text(json.dumps(empty_catalog(), indent=2))
         try:
             return json.loads(CATALOG_FILE.read_text())
         except json.JSONDecodeError:
-            # Corrupt JSON — start fresh, keep a backup.
             backup = CATALOG_FILE.with_suffix(f".json.broken.{int(time.time())}")
             CATALOG_FILE.rename(backup)
             empty = empty_catalog()
@@ -110,7 +129,6 @@ def load_catalog() -> dict:
 
 
 def save_catalog(cat: dict) -> None:
-    """Atomic write: tmp file + rename."""
     cat["updated_at"] = now_iso()
     with _catalog_lock:
         tmp = CATALOG_FILE.with_suffix(".json.tmp")
@@ -118,10 +136,25 @@ def save_catalog(cat: dict) -> None:
         tmp.replace(CATALOG_FILE)
 
 
+def is_release_visible(r: dict, now: datetime | None = None) -> bool:
+    """A release is publicly visible if status='published' AND release date is
+    in the past (or empty — empty defaults to immediate publication)."""
+    if r.get("status") != "published":
+        return False
+    rel_at = parse_iso(r.get("released_at"))
+    if rel_at is None:
+        return True
+    if now is None:
+        now = now_utc()
+    # released_at is ISO with tz; normalise to UTC if naive.
+    if rel_at.tzinfo is None:
+        rel_at = rel_at.replace(tzinfo=timezone.utc)
+    return rel_at <= now
+
+
 def public_view(cat: dict) -> dict:
-    """Strip drafts and admin-only fields before sending to public API."""
-    releases = [r for r in cat.get("releases", []) if r.get("status") == "published"]
-    # Sort newest first by released_at fallback to created_at.
+    now = now_utc()
+    releases = [r for r in cat.get("releases", []) if is_release_visible(r, now)]
     releases.sort(
         key=lambda r: r.get("released_at") or r.get("created_at") or "",
         reverse=True,
@@ -130,14 +163,10 @@ def public_view(cat: dict) -> dict:
 
 
 def is_admin() -> bool:
-    # Security model changed: admin access is gated by a secret URL on the
-    # frontend (see public_html/.htaccess), not by a session/password.
-    # Anyone who knows the secret URL is treated as admin.
     return True
 
 
 def require_admin():
-    # No-op. Kept as a function so existing call-sites still work.
     return
 
 
@@ -149,9 +178,24 @@ def safe_ext(filename: str, allowed: set[str]) -> str:
 
 
 def client_ip() -> str:
-    # cPanel usually sits behind Apache; X-Forwarded-For may carry the real IP.
     fwd = request.headers.get("X-Forwarded-For", "")
     return fwd.split(",")[0].strip() if fwd else (request.remote_addr or "?")
+
+
+def find_release(cat: dict, rid: str) -> tuple[int, dict | None]:
+    for i, r in enumerate(cat.get("releases", [])):
+        if r.get("id") == rid:
+            return i, r
+    return -1, None
+
+
+def append_play_log(track_id: str) -> None:
+    """Append one line to plays.jsonl. JSON-lines format keeps appends atomic
+    on POSIX (single write < pipe buffer) and is trivial to read back."""
+    line = json.dumps({"t": now_iso(), "id": track_id}, separators=(",", ":")) + "\n"
+    with _plays_lock:
+        with open(PLAYS_LOG, "a", encoding="utf-8") as fh:
+            fh.write(line)
 
 
 # ─────────────────────────── public API ───────────────────────
@@ -163,15 +207,15 @@ def api_catalog():
 @app.get("/api/release/<slug>")
 def api_release(slug: str):
     cat = load_catalog()
+    now = now_utc()
     for r in cat.get("releases", []):
-        if r.get("slug") == slug and r.get("status") == "published":
+        if r.get("slug") == slug and is_release_visible(r, now):
             return jsonify(r)
     abort(404)
 
 
 @app.post("/api/play")
 def api_play():
-    """Increment play count. Debounced per IP+track."""
     body = request.get_json(silent=True) or {}
     track_id = body.get("track_id")
     if not track_id:
@@ -183,7 +227,6 @@ def api_play():
     if now - last < PLAY_DEBOUNCE_SEC:
         return jsonify({"ok": True, "counted": False})
     _play_cache[key] = now
-    # Trim cache occasionally
     if len(_play_cache) > 5000:
         cutoff = now - PLAY_DEBOUNCE_SEC * 2
         for k in [k for k, v in _play_cache.items() if v < cutoff]:
@@ -203,6 +246,9 @@ def api_play():
     if not found:
         abort(404)
     save_catalog(cat)
+    # Append to log AFTER catalog save so analytics never references a track
+    # that doesn't exist in the catalog.
+    append_play_log(track_id)
     return jsonify({"ok": True, "counted": True})
 
 
@@ -213,8 +259,6 @@ def api_admin_login():
     password = (body.get("password") or "").encode("utf-8")
     pw_hash = (os.environ.get("ADMIN_PASSWORD_HASH") or "").encode("utf-8")
     if not pw_hash:
-        # Useful self-check during deployment: tells you the env var is missing
-        # without leaking whether the password matched.
         return jsonify({"ok": False, "error": "server_not_configured"}), 503
     try:
         if bcrypt.checkpw(password, pw_hash):
@@ -222,10 +266,7 @@ def api_admin_login():
             session.permanent = True
             return jsonify({"ok": True})
     except ValueError:
-        # Malformed hash in env
         return jsonify({"ok": False, "error": "server_misconfigured"}), 503
-    # Constant-ish delay against brute force (cheap, doesn't replace rate limiting
-    # at the cPanel/.htaccess level if you ever care).
     time.sleep(0.4)
     return jsonify({"ok": False, "error": "invalid_password"}), 401
 
@@ -246,6 +287,16 @@ def api_admin_me():
 def api_admin_catalog():
     require_admin()
     return jsonify(load_catalog())
+
+
+@app.get("/api/admin/release/<rid>")
+def api_admin_get_release(rid: str):
+    require_admin()
+    cat = load_catalog()
+    _, rel = find_release(cat, rid)
+    if not rel:
+        abort(404)
+    return jsonify(rel)
 
 
 @app.post("/api/admin/upload/audio")
@@ -293,8 +344,6 @@ def api_admin_upload_cover():
 
 @app.post("/api/admin/waveform")
 def api_admin_save_waveform():
-    """Client computes peaks via OfflineAudioContext and posts them here.
-    Stored as a small JSON next to audio for instant render on the public site."""
     require_admin()
     body = request.get_json(silent=True) or {}
     audio_filename = body.get("audio_filename")
@@ -310,11 +359,6 @@ def api_admin_save_waveform():
 
 @app.post("/api/admin/release")
 def api_admin_save_release():
-    """Create or update a release.
-
-    Body: full release object. If `id` is missing → create.
-    Slug auto-generated from title; uniqueness enforced by appending -2, -3, ...
-    """
     require_admin()
     body = request.get_json(silent=True) or {}
     cat = load_catalog()
@@ -334,11 +378,25 @@ def api_admin_save_release():
         slug = f"{base_slug}-{n}"
         n += 1
 
-    # Normalise tracks: ensure each has an id and play counter
+    existing = None
+    if not is_new:
+        _, existing = find_release(cat, rid)
+
+    existing_track_plays: dict[str, int] = {}
+    if existing:
+        for t in existing.get("tracks", []):
+            tid = t.get("id")
+            if tid:
+                existing_track_plays[tid] = int(t.get("plays", 0))
+
     tracks = []
     for i, t in enumerate(body.get("tracks", [])):
+        tid = t.get("id") or uuid.uuid4().hex[:12]
+        plays = int(t.get("plays") or 0)
+        if plays == 0 and tid in existing_track_plays:
+            plays = existing_track_plays[tid]
         tracks.append({
-            "id": t.get("id") or uuid.uuid4().hex[:12],
+            "id": tid,
             "n": f"{i + 1:02d}",
             "title": (t.get("title") or "").strip() or f"Track {i + 1}",
             "audio_url": t.get("audio_url"),
@@ -346,7 +404,7 @@ def api_admin_save_release():
             "waveform_url": t.get("waveform_url"),
             "duration": float(t.get("duration") or 0),
             "bpm": int(t.get("bpm") or 0) if t.get("bpm") else None,
-            "plays": int(t.get("plays") or 0),
+            "plays": plays,
         })
 
     rel = {
@@ -354,9 +412,9 @@ def api_admin_save_release():
         "slug": slug,
         "title": title,
         "artist": body.get("artist") or "THE RIZAEV",
-        "type": body.get("type") or "single",      # single | ep | lp
+        "type": body.get("type") or "single",
         "year": body.get("year") or str(datetime.now().year),
-        "released_at": body.get("released_at") or now_iso(),
+        "released_at": body.get("released_at") or (existing.get("released_at") if existing else now_iso()),
         "genre": body.get("genre") or "",
         "tags": body.get("tags") or [],
         "description": body.get("description") or "",
@@ -368,8 +426,8 @@ def api_admin_save_release():
         "accent_color_2": body.get("accent_color_2") or "#000000",
         "tracks": tracks,
         "plays": sum(t["plays"] for t in tracks),
-        "status": body.get("status") or "published",  # published | draft
-        "created_at": body.get("created_at") or now_iso(),
+        "status": body.get("status") or "published",
+        "created_at": (existing.get("created_at") if existing else None) or body.get("created_at") or now_iso(),
         "updated_at": now_iso(),
     }
 
@@ -378,17 +436,93 @@ def api_admin_save_release():
     else:
         for i, r in enumerate(releases):
             if r.get("id") == rid:
-                # Preserve play counts even if client forgot to send them
-                existing_plays = {t["id"]: t.get("plays", 0) for t in r.get("tracks", [])}
-                for t in rel["tracks"]:
-                    if t["id"] in existing_plays and t["plays"] == 0:
-                        t["plays"] = existing_plays[t["id"]]
-                rel["plays"] = sum(t["plays"] for t in rel["tracks"])
                 releases[i] = rel
                 break
         else:
             releases.insert(0, rel)
 
+    save_catalog(cat)
+    return jsonify({"ok": True, "release": rel})
+
+
+@app.patch("/api/admin/release/<rid>")
+def api_admin_patch_release(rid: str):
+    require_admin()
+    body = request.get_json(silent=True) or {}
+    cat = load_catalog()
+    idx, rel = find_release(cat, rid)
+    if not rel:
+        abort(404)
+
+    allowed = {
+        "title", "artist", "type", "year", "released_at", "genre", "tags",
+        "description", "explicit", "isrc", "cover_url", "cover_filename",
+        "accent_color", "accent_color_2", "status",
+    }
+    for k, v in body.items():
+        if k in allowed:
+            rel[k] = v
+
+    if "title" in body:
+        base_slug = slugify(rel["title"])
+        slug = base_slug
+        n = 2
+        taken = {r["slug"] for r in cat["releases"] if r.get("id") != rid}
+        while slug in taken:
+            slug = f"{base_slug}-{n}"
+            n += 1
+        rel["slug"] = slug
+
+    rel["updated_at"] = now_iso()
+    cat["releases"][idx] = rel
+    save_catalog(cat)
+    return jsonify({"ok": True, "release": rel})
+
+
+@app.post("/api/admin/release/<rid>/duplicate")
+def api_admin_duplicate_release(rid: str):
+    """Clone a release as a fresh draft. Tracks get NEW ids (so play counts
+    don't bleed across clones), but reuse the SAME audio_url/cover_url —
+    it's a logical clone, not a file copy. The user can replace files later."""
+    require_admin()
+    cat = load_catalog()
+    _, src = find_release(cat, rid)
+    if not src:
+        abort(404)
+
+    new_id = uuid.uuid4().hex[:12]
+    base_title = (src.get("title") or "Untitled") + " (copy)"
+    base_slug = slugify(base_title)
+    slug = base_slug
+    n = 2
+    taken = {r["slug"] for r in cat["releases"]}
+    while slug in taken:
+        slug = f"{base_slug}-{n}"
+        n += 1
+
+    new_tracks = []
+    for i, t in enumerate(src.get("tracks", [])):
+        new_tracks.append({
+            **t,
+            "id": uuid.uuid4().hex[:12],
+            "n": f"{i + 1:02d}",
+            "plays": 0,
+        })
+
+    rel = {
+        **src,
+        "id": new_id,
+        "slug": slug,
+        "title": base_title,
+        "tracks": new_tracks,
+        "plays": 0,
+        "status": "draft",
+        # Reset timestamps for the clone; keep the cover/colors/description.
+        "released_at": now_iso(),
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    cat["releases"].insert(0, rel)
     save_catalog(cat)
     return jsonify({"ok": True, "release": rel})
 
@@ -405,9 +539,97 @@ def api_admin_delete_release(rid: str):
     return jsonify({"ok": True})
 
 
+# ─────────────────────────── analytics ────────────────────────
+@app.get("/api/admin/analytics")
+def api_admin_analytics():
+    """Return:
+       - per_day:   [{date: 'YYYY-MM-DD', plays: N}, ...] for the last `days` days
+       - top:       [{track_id, title, release_title, plays}] limited to top N
+       - totals:    overall totals
+    Reads plays.jsonl line by line — fine for tens of thousands of plays. If
+    the log ever grows huge, switch to a periodic aggregation step."""
+    require_admin()
+    days = int(request.args.get("days", 30))
+    top_n = int(request.args.get("top", 10))
+
+    end = now_utc().date()
+    start = end - timedelta(days=days - 1)
+
+    per_day: dict[str, int] = defaultdict(int)
+    per_track: dict[str, int] = defaultdict(int)
+    total_in_window = 0
+
+    if PLAYS_LOG.exists():
+        with open(PLAYS_LOG, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = parse_iso(rec.get("t"))
+                tid = rec.get("id")
+                if not ts or not tid:
+                    continue
+                day = ts.date()
+                if start <= day <= end:
+                    per_day[day.isoformat()] += 1
+                    total_in_window += 1
+                # per_track is all-time, not windowed
+                per_track[tid] += 1
+
+    # Fill missing days with 0 so the chart x-axis is contiguous.
+    series = []
+    cur = start
+    while cur <= end:
+        key = cur.isoformat()
+        series.append({"date": key, "plays": per_day.get(key, 0)})
+        cur += timedelta(days=1)
+
+    # Build top-tracks list using catalog metadata.
+    cat = load_catalog()
+    track_meta: dict[str, dict] = {}
+    for r in cat.get("releases", []):
+        for t in r.get("tracks", []):
+            track_meta[t["id"]] = {
+                "track_id": t["id"],
+                "title": t.get("title") or "Untitled",
+                "release_title": r.get("title") or "",
+                "release_slug": r.get("slug") or "",
+                "release_id": r.get("id") or "",
+                "cover_url": r.get("cover_url"),
+                "accent_color": r.get("accent_color"),
+                "accent_color_2": r.get("accent_color_2"),
+                "plays_total": int(t.get("plays") or 0),  # cumulative counter from catalog
+            }
+
+    # Use the cumulative play counter (from catalog.json) as the source of
+    # truth for "top tracks" — it's consistent with what the user sees on
+    # release pages, even for plays from before plays.jsonl existed.
+    top = sorted(
+        track_meta.values(),
+        key=lambda x: x["plays_total"],
+        reverse=True,
+    )[:top_n]
+
+    total_plays_alltime = sum(m["plays_total"] for m in track_meta.values())
+
+    return jsonify({
+        "ok": True,
+        "window_days": days,
+        "per_day": series,
+        "top": top,
+        "totals": {
+            "in_window": total_in_window,
+            "all_time": total_plays_alltime,
+            "tracks": len(track_meta),
+        },
+    })
+
+
 # ─────────────────────────── media serving ────────────────────
-# Apache will normally serve /media/* directly via .htaccess (much faster, supports Range).
-# These routes are a fallback if you ever run the app standalone (e.g. local dev).
 @app.get("/media/audio/<path:filename>")
 def media_audio(filename):
     return send_from_directory(AUDIO_DIR, filename, conditional=True)
@@ -435,5 +657,4 @@ def err(e):
 
 
 if __name__ == "__main__":
-    # Local dev only. cPanel uses passenger_wsgi.py.
     app.run(host="127.0.0.1", port=5000, debug=True)
