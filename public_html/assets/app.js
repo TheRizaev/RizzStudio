@@ -232,11 +232,7 @@ function footerHTML() {
   return `
     <footer class="footer pad-x">
       <div class="footer-hero" id="footer-hero">
-        <div class="fh-scanlines"></div>
-        <div class="fh-beam" id="fh-beam"></div>
         <div class="fh-wordmark">
-          <div class="fh-layer fh-magenta" id="fh-magenta">${footerWordmark('#ff10a8', false)}</div>
-          <div class="fh-layer fh-cyan" id="fh-cyan">${footerWordmark('#00d9ff', false)}</div>
           <div class="fh-layer fh-base" id="fh-base">${footerWordmark('#c6ff00', true)}</div>
         </div>
       </div>
@@ -251,12 +247,11 @@ function footerHTML() {
     </footer>
   `;
 }
-
 function footerWordmark(color, isBase) {
   const dotColor = isBase ? '#fff' : color;
   return `
     <span class="fh-mark" style="color:${color}">
-      <em class="fh-the">the</em><span class="fh-name">RIZAEV</span><span class="fh-dot" style="color:${dotColor}">.</span>
+      <em class="fh-the">RIZZ</em><span class="fh-name">STUDIO</span><span class="fh-dot" style="color:${dotColor}"></span>
     </span>
   `;
 }
